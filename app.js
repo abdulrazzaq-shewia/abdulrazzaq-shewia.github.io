@@ -24,6 +24,149 @@ document.addEventListener("click", event => {
   if (!event.target.closest(".site-header")) closeMenu();
 });
 
+// Enhance the existing sections on small screens; without JS, all content stays visible.
+const mobileSectionsMedia = window.matchMedia("(max-width: 700px)");
+const sectionAccordions = [...document.querySelectorAll("main > section[data-accordion-label]")].map((section, index) => {
+  const panel = document.createElement("div");
+  panel.id = `${section.id}-panel`;
+  panel.className = "accordion-panel";
+  panel.append(...section.childNodes);
+
+  const heading = document.createElement("h2");
+  heading.className = "accordion-heading";
+  heading.hidden = true;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "accordion-trigger";
+  button.id = `${section.id}-toggle`;
+  button.setAttribute("aria-controls", panel.id);
+  button.setAttribute("aria-expanded", "true");
+  const number = document.createElement("span");
+  number.className = "accordion-number";
+  number.textContent = String(index + 1).padStart(2, "0");
+  number.setAttribute("aria-hidden", "true");
+  const copy = document.createElement("span");
+  copy.className = "accordion-copy";
+  const label = document.createElement("span");
+  label.className = "accordion-label";
+  label.textContent = section.dataset.accordionLabel;
+  const description = document.createElement("span");
+  description.className = "accordion-description";
+  description.textContent = section.dataset.accordionDescription;
+  copy.append(label, description);
+  const indicator = document.createElement("span");
+  indicator.className = "accordion-indicator";
+  indicator.setAttribute("aria-hidden", "true");
+  indicator.innerHTML = '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
+  button.append(number, copy, indicator);
+  heading.append(button);
+  section.append(heading, panel);
+  section.classList.add("portfolio-section");
+  return { section, heading, button, panel, originalLabel: section.getAttribute("aria-labelledby") };
+});
+
+const mobileProfileCards = [document.querySelector(".focus-card"), document.querySelector("#profile-highlights")].map(element => {
+  const anchor = document.createComment("Desktop profile card position");
+  element.before(anchor);
+  return { element, anchor };
+});
+let expandedSection = null;
+
+function accordionForHash(hash) {
+  let target;
+  try {
+    target = document.getElementById(decodeURIComponent(hash.slice(1)));
+  } catch {
+    return null;
+  }
+  return target ? sectionAccordions.find(item => item.section === target || item.panel.contains(target)) : null;
+}
+
+function expandMobileSection(selected) {
+  expandedSection = selected;
+  sectionAccordions.forEach(item => {
+    const expanded = item === selected;
+    // Move focus out of content that is about to disappear (for in-page links).
+    if (!expanded && item.panel.contains(document.activeElement)) {
+      (selected?.button ?? item.button).focus({ preventScroll: true });
+    }
+    item.panel.hidden = !expanded;
+    item.button.setAttribute("aria-expanded", String(expanded));
+  });
+}
+
+function applyMobileSections(mobile) {
+  const focusedSection = sectionAccordions.find(item => item.panel.contains(document.activeElement));
+  document.documentElement.classList.toggle("mobile-accordion", mobile);
+  sectionAccordions.forEach(item => {
+    item.heading.hidden = !mobile;
+    item.section.setAttribute("aria-labelledby", mobile ? item.button.id : item.originalLabel);
+    if (!mobile) {
+      item.panel.hidden = false;
+      item.button.setAttribute("aria-expanded", "true");
+      if (document.activeElement === item.button) {
+        navigation.querySelector(`a[href="#${item.section.id}"]`)?.focus({ preventScroll: true });
+      }
+    }
+  });
+  const aboutPanel = document.querySelector("#about-panel");
+  mobileProfileCards.forEach(({ element, anchor }) => {
+    if (mobile) aboutPanel.append(element);
+    else anchor.after(element);
+  });
+  if (mobile) expandMobileSection(focusedSection ?? expandedSection ?? accordionForHash(window.location.hash));
+}
+
+sectionAccordions.forEach(item => {
+  item.button.addEventListener("click", () => {
+    if (!mobileSectionsMedia.matches) return;
+    const opening = item.panel.hidden;
+    expandMobileSection(opening ? item : null);
+    if (opening) {
+      requestAnimationFrame(() => {
+        const headerBottom = document.querySelector(".site-header").getBoundingClientRect().bottom;
+        if (item.button.getBoundingClientRect().top < headerBottom) {
+          item.section.scrollIntoView({ block: "start" });
+        }
+      });
+    }
+  });
+  item.button.addEventListener("keydown", event => {
+    const index = sectionAccordions.indexOf(item);
+    let next;
+    if (event.key === "ArrowDown") next = (index + 1) % sectionAccordions.length;
+    else if (event.key === "ArrowUp") next = (index - 1 + sectionAccordions.length) % sectionAccordions.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = sectionAccordions.length - 1;
+    else return;
+    event.preventDefault();
+    sectionAccordions[next].button.focus();
+  });
+});
+
+document.addEventListener("click", event => {
+  if (!mobileSectionsMedia.matches || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const link = event.target.closest('a[href^="#"]');
+  if (!link) return;
+  const target = accordionForHash(link.getAttribute("href"));
+  if (target) expandMobileSection(target);
+  else if (link.getAttribute("href") === "#home") expandMobileSection(null);
+});
+window.addEventListener("hashchange", () => {
+  if (!mobileSectionsMedia.matches) return;
+  const target = accordionForHash(window.location.hash);
+  if (target) expandMobileSection(target);
+  else if (window.location.hash === "#home") expandMobileSection(null);
+});
+mobileSectionsMedia.addEventListener("change", event => applyMobileSections(event.matches));
+window.addEventListener("beforeprint", () => applyMobileSections(false));
+window.addEventListener("afterprint", () => applyMobileSections(mobileSectionsMedia.matches));
+applyMobileSections(mobileSectionsMedia.matches);
+if (mobileSectionsMedia.matches) {
+  const initialSection = accordionForHash(window.location.hash);
+  if (initialSection) requestAnimationFrame(() => initialSection.section.scrollIntoView({ block: "start" }));
+}
+
 const projects = {
   campusgear: {
     title: "CampusGear Equipment Checkout System",
